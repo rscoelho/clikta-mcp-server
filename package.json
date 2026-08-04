@@ -1,0 +1,41 @@
+{
+  "name": "@clikta/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server that lets Claude drive a real browser and turn what it does into a Clikta interactive demo, step guide, and narrated video — automatically.",
+  "keywords": ["mcp", "model-context-protocol", "claude", "browser-automation", "playwright", "documentation", "demo"],
+  "license": "MIT",
+  "author": "Clikta, Lda.",
+  "homepage": "https://clikta.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rscoelho/clikta-mcp-server.git"
+  },
+  "bugs": "https://github.com/rscoelho/clikta-mcp-server/issues",
+  "type": "module",
+  "bin": {
+    "clikta-mcp-server": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "playwright": "^1.62.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
