@@ -6,6 +6,8 @@ It reuses the exact same pipeline as the Clikta Chrome extension: every action i
 
 Built by [Clikta](https://clikta.com) — the design rationale and implementation history live in `docs/mcp-architecture.md` in the [main `clikta` repo](https://github.com/rscoelho/clikta).
 
+**Requires a Pro or Team Clikta plan.** A free-plan token gets a clear `plan_required` error from `clikta_start_recording` explaining that, rather than a bare auth failure.
+
 ## Setup
 
 1. Get an API token: in the Clikta web app, go to **Settings → API Token** and generate one (`clikta_...`). This is the same token type the Chrome extension uses.
@@ -54,13 +56,33 @@ Built by [Clikta](https://clikta.com) — the design rationale and implementatio
 | `clikta_finish_recording` | Marks the recording done, generates the AI guide, publishes it, returns the share link, closes the browser |
 | `clikta_list_recordings` | Lists existing recordings, to resume or avoid duplicates |
 | `clikta_list_tools` | Lists registered Clikta "Tool" entities (products), to attach a recording to an existing one via `toolId` |
+| `clikta_create_tool` | Registers a new product/tool, so future recordings can attach to it via `toolId` |
+| `clikta_describe_tool` | Read-only summary of what Clikta already knows about a product: its modules/chapters, past recordings and their steps, pages visited before |
+| `clikta_plan_demo` | Turns an objective into a short step outline *before* recording — pre-processing for a single demo |
+| `clikta_plan_module` | Proposes a MODULE — a set of 3-8 separate demos covering a broader goal — as a plan only, nothing saved |
+| `clikta_create_module` | Persists a module and its planned chapters, once the user has approved the `clikta_plan_module` proposal |
+| `clikta_list_modules` | Lists a product's modules, with chapter counts |
+| `clikta_get_module` | Full per-chapter detail of one module — which chapters are recorded vs still pending, to resume across sessions |
 
 ## Typical flow
 
-1. `clikta_start_recording` with a `name` and `toolUrl` pointing at the product/page to demo
-2. Open the returned `watchUrl` in a browser to watch steps land live
-3. `clikta_navigate` / `clikta_click` / `clikta_type` through the flow, calling `clikta_note` to explain intent along the way
-4. `clikta_finish_recording` to generate and publish the guide
+For a single, self-contained demo:
+
+1. `clikta_list_tools` / `clikta_create_tool` — find or register the product
+2. `clikta_describe_tool` and `clikta_plan_demo` — see what's already known, then plan the steps
+3. `clikta_start_recording` with a `name` and `toolUrl` pointing at the product/page to demo
+4. Open the returned `watchUrl` in a browser to watch steps land live
+5. `clikta_navigate` / `clikta_click` / `clikta_type` through the flow, calling `clikta_note` to explain intent along the way
+6. `clikta_finish_recording` to generate and publish the guide
+
+For a broader goal that's really several demos (e.g. "document the whole onboarding experience"):
+
+1. `clikta_plan_module` to propose a module (a name + 3-8 chapters) — **show this to the user and get their explicit approval before continuing**, this is the most important checkpoint in the whole flow
+2. `clikta_create_module` to persist it once approved
+3. For each chapter, follow the single-demo flow above, passing `moduleId`/`chapterId` to `clikta_start_recording` so the finished recording fills that slot
+4. `clikta_get_module` any time to check progress, including across separate sessions
+
+The full server `instructions` (shown to the connecting client automatically) spell this out in more detail — see `src/instructions.ts`.
 
 ## Guardrails
 

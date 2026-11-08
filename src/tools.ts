@@ -38,9 +38,12 @@ export function registerTools(server: McpServer): void {
   server.tool(
     "clikta_start_recording",
     "Start a new Clikta recording. Creates the recording on the Clikta workspace, launches a real browser, " +
-      "and (if toolUrl is given) navigates there first. Call this before any other clikta_* action tool. " +
+      "and (if toolUrl is given) navigates there first. Call this before any other clikta_* action tool. For " +
+      "anything beyond a trivial 1-2 step demo, call clikta_describe_tool and clikta_plan_demo first — planning " +
+      "before you start driving the browser produces a noticeably better result than improvising click-by-click. " +
       "Prefer a staging/sandbox toolUrl over production when one is available — the result includes a warning " +
-      "if the URL doesn't look like one.",
+      "if the URL doesn't look like one. If this recording fills a chapter from clikta_create_module, pass " +
+      "moduleId + chapterId so the finished recording links into that slot automatically.",
     {
       name: z.string().min(1).describe("Name for the recording/demo, e.g. 'Sign up flow'"),
       objective: z.string().optional().describe("What this demo should show or teach"),
@@ -49,9 +52,20 @@ export function registerTools(server: McpServer): void {
         .optional()
         .describe("Existing Clikta Tool id (from clikta_list_tools) to attach this recording to"),
       toolUrl: z.string().url().optional().describe("URL to open first — the product/page being demoed"),
+      moduleId: z
+        .string()
+        .optional()
+        .describe("When recording a planned module chapter (from clikta_create_module/clikta_get_module): that module's id"),
+      chapterId: z
+        .string()
+        .optional()
+        .describe("When recording a planned module chapter: that chapter's id — requires moduleId too"),
     },
-    safe(async ({ name, objective, toolId, toolUrl }) => {
+    safe(async ({ name, objective, toolId, toolUrl, moduleId, chapterId }) => {
       const recording = await clicktaApi.createRecording({ name, objective, toolId });
+      if (moduleId && chapterId) {
+        await clicktaApi.linkChapterRecording(moduleId, chapterId, recording.id);
+      }
       recordingSession.recordingId = recording.id;
       recordingSession.eventCount = 0;
 
@@ -82,7 +96,8 @@ export function registerTools(server: McpServer): void {
         recordingId: recording.id,
         watchUrl,
         ...(warning && { warning }),
-        message: `Recording started. Open ${watchUrl} to watch steps appear live while you work.`,
+        message: `Recording started${moduleId && chapterId ? " and linked to its planned chapter" : ""}. Open ` +
+          `${watchUrl} to watch steps appear live while you work.`,
       });
     })
   );
@@ -262,11 +277,188 @@ export function registerTools(server: McpServer): void {
     "clikta_list_tools",
     "List the products/tools already registered in the Clikta workspace (Clikta 'Tool' entities, e.g. " +
       "'Acme Dashboard'), so a new recording can be attached to an existing one via toolId instead of creating " +
-      "a duplicate.",
+      "a duplicate. Call this first, before clikta_create_tool — if the product you're about to record isn't " +
+      "in this list, create it; if it is, reuse its id.",
     {},
     safe(async () => {
       const tools = await clicktaApi.listTools();
       return textResult(tools);
+    })
+  );
+
+  server.tool(
+    "clikta_create_tool",
+    "Register a new product/tool in the Clikta workspace. Every recording made for this product afterwards " +
+      "should pass its id as toolId — that's what lets clikta_describe_tool and clikta_plan_demo find and " +
+      "reuse what's already known about it instead of starting blind every time. Call clikta_list_tools first " +
+      "to make sure it doesn't already exist — a duplicate splits the product's recordings/modules across two " +
+      "unrelated entities.",
+    {
+      name: z.string().min(1).describe("Product name, e.g. 'Acme Dashboard'"),
+      url: z.string().url().optional().describe("The product's URL — also used to auto-fetch a favicon as the tool's logo"),
+    },
+    safe(async ({ name, url }) => {
+      const tool = await clicktaApi.createTool({ name, url });
+      return textResult({
+        toolId: tool.id,
+        name: tool.name,
+        url: tool.url,
+        message: `Tool created. Pass toolId "${tool.id}" to clikta_start_recording (and clikta_describe_tool / ` +
+          `clikta_plan_demo on future recordings for this product).`,
+      });
+    })
+  );
+
+  server.tool(
+    "clikta_describe_tool",
+    "Read-only 'software intelligence' summary of a Clikta Tool: its existing modules/chapters, its past " +
+      "recordings (with their already-written steps), whether a saved login session is available, and which " +
+      "pages of the product past recordings actually visited. Call this before clikta_plan_demo or " +
+      "clikta_start_recording so you don't duplicate an existing demo and can reuse what's already known about " +
+      "the product's navigation.",
+    { toolId: z.string().min(1).describe("Tool id, from clikta_list_tools") },
+    safe(async ({ toolId }) => {
+      const intelligence = await clicktaApi.describeTool(toolId);
+      return textResult(intelligence);
+    })
+  );
+
+  server.tool(
+    "clikta_plan_demo",
+    "Turn a plain-language objective into a short, ordered outline (3-8 high-level steps) BEFORE recording " +
+      "anything — pre-processing for the demo, not a literal click script (exact selectors only make sense once " +
+      "you see the real page). Pass toolId when one exists so the plan accounts for pages and demos Clikta " +
+      "already knows about (see clikta_describe_tool) instead of risking a duplicate. Uses one AI credit. " +
+      "After this, call clikta_start_recording and use the plan as a loose checklist — deviate from it freely " +
+      "once the real page doesn't match what was assumed, and call clikta_note to explain any such deviation.",
+    {
+      objective: z.string().min(1).describe("What this demo should show or teach"),
+      toolId: z
+        .string()
+        .optional()
+        .describe("Existing Clikta Tool id (from clikta_list_tools) — enriches the plan with what's already known"),
+      toolUrl: z.string().url().optional().describe("The product's URL, when there's no toolId yet"),
+    },
+    safe(async ({ objective, toolId, toolUrl }) => {
+      const plan = await clicktaApi.planDemo({ objective, toolId, toolUrl });
+      return textResult(plan);
+    })
+  );
+
+  server.tool(
+    "clikta_plan_module",
+    "Propose a MODULE — a set of 3-8 separate demos (one per chapter) — that together cover a broad goal " +
+      "(e.g. 'document the whole admin onboarding experience'), BEFORE recording anything or creating the " +
+      "module itself. This is a PROPOSAL ONLY, nothing is saved. CRITICAL: show this proposal to the user and " +
+      "get their explicit go-ahead (or their edits) before calling clikta_create_module — do not persist a " +
+      "module plan the user hasn't actually seen and approved. Skip this tool entirely for a single, " +
+      "self-contained demo (use clikta_plan_demo instead). Uses one AI credit.",
+    {
+      objective: z.string().min(1).describe("The broad goal this module should cover"),
+      toolId: z
+        .string()
+        .optional()
+        .describe("Existing Clikta Tool id (from clikta_list_tools) — avoids proposing chapters that duplicate existing demos/modules"),
+      toolUrl: z.string().url().optional().describe("The product's URL, when there's no toolId yet"),
+    },
+    safe(async ({ objective, toolId, toolUrl }) => {
+      const plan = await clicktaApi.planModule({ objective, toolId, toolUrl });
+      return textResult({
+        ...plan,
+        message:
+          "This is a proposal, not yet saved. Show it to the user — confirm the module name/description and " +
+          "the list of chapters (add/remove/reorder as they ask) — before calling clikta_create_module.",
+      });
+    })
+  );
+
+  server.tool(
+    "clikta_create_module",
+    "Persist a Module and its planned chapters, ONLY after the user has approved the proposal from " +
+      "clikta_plan_module (or given you an equivalent plan directly). Each chapter is created as a 'demo' " +
+      "chapter with no recording attached yet — record it later with clikta_start_recording, passing that " +
+      "chapter's moduleId/chapterId so the finished recording links into its slot automatically.",
+    {
+      toolId: z.string().min(1).describe("Tool id this module belongs to (from clikta_list_tools / clikta_create_tool)"),
+      name: z.string().min(1).describe("Module name, from the approved plan"),
+      description: z.string().optional().describe("Module description, from the approved plan"),
+      chapters: z
+        .array(
+          z.object({
+            title: z.string().min(1),
+            objective: z.string().min(1).describe("What this specific chapter's demo should show/teach"),
+          })
+        )
+        .min(1)
+        .describe("The approved list of chapters, in order"),
+    },
+    safe(async ({ toolId, name, description, chapters }) => {
+      const module = await clicktaApi.createModule(toolId, name);
+      if (description) {
+        await clicktaApi.updateModule(module.id, { description });
+      }
+
+      const createdChapters: { chapterId: string; title: string; objective: string }[] = [];
+      let insertAfterOrder = 0;
+      for (const chapter of chapters) {
+        const created = await clicktaApi.addChapter(module.id, {
+          title: chapter.title,
+          type: "demo",
+          description: chapter.objective,
+          insertAfterOrder,
+        });
+        insertAfterOrder = created.order;
+        createdChapters.push({ chapterId: created.id, title: chapter.title, objective: chapter.objective });
+      }
+
+      return textResult({
+        moduleId: module.id,
+        name: module.name,
+        chapters: createdChapters,
+        message:
+          `Module created with ${createdChapters.length} planned chapter(s), none recorded yet. For each one, ` +
+          `call clikta_start_recording with moduleId "${module.id}" and that chapter's chapterId so the ` +
+          `recording links into its slot. Use clikta_list_modules / clikta_get_module any time to check progress ` +
+          "— including in a later session, to resume where you left off.",
+      });
+    })
+  );
+
+  server.tool(
+    "clikta_list_modules",
+    "List the modules already planned/published for a Tool, with how many chapters each has. Use this to " +
+      "check for an existing module (and avoid proposing an overlapping one with clikta_plan_module) or to " +
+      "resume a module's progress — pair with clikta_get_module for the per-chapter detail.",
+    { toolId: z.string().min(1).describe("Tool id, from clikta_list_tools") },
+    safe(async ({ toolId }) => {
+      const modules = await clicktaApi.listModules(toolId);
+      return textResult(modules);
+    })
+  );
+
+  server.tool(
+    "clikta_get_module",
+    "Full detail of one module: every chapter, in order, with whether it already has a recording attached " +
+      "(and that recording's step count / publish status) or is still pending. Use this to pick up a " +
+      "partially-recorded module — in this session or a later one — and see exactly which chapters are left.",
+    { moduleId: z.string().min(1).describe("Module id, from clikta_create_module or clikta_list_modules") },
+    safe(async ({ moduleId }) => {
+      const module = await clicktaApi.getModule(moduleId);
+      return textResult({
+        id: module.id,
+        name: module.name,
+        description: module.description,
+        chapters: module.chapters.map((c) => ({
+          chapterId: c.id,
+          order: c.order,
+          title: c.title,
+          objective: c.description,
+          status: c.recording ? "recorded" : "pending",
+          recording: c.recording
+            ? { id: c.recording.id, name: c.recording.name, stepsCount: c.recording.steps.length, published: c.recording.published }
+            : null,
+        })),
+      });
     })
   );
 }

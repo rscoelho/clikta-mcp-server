@@ -80,6 +80,65 @@ export interface ToolSummary {
   url: string | null;
 }
 
+export interface CreatedTool {
+  id: string;
+  name: string;
+  url: string | null;
+}
+
+export interface ToolIntelligence {
+  tool: { id: string; name: string; url: string | null };
+  hasLoginSession: boolean;
+  modules: { name: string; description: string | null; published: boolean; chapters: { title: string; type: string }[] }[];
+  recordings: { name: string; objective: string | null; status: string; steps: { title: string | null; description: string }[] }[];
+  knownPages: { url: string; pageTitle: string | null }[];
+}
+
+export interface DemoPlanResult {
+  title: string;
+  steps: { title: string; description: string }[];
+}
+
+export interface ModulePlanResult {
+  moduleName: string;
+  moduleDescription: string;
+  chapters: { title: string; objective: string }[];
+}
+
+export interface CreatedModule {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface ChapterSummary {
+  id: string;
+  moduleId: string;
+  order: number;
+  title: string;
+  type: string;
+  description: string | null;
+  recordingId: string | null;
+}
+
+export interface ModuleSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  published: boolean;
+  _count?: { chapters: number };
+}
+
+export interface ModuleDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  published: boolean;
+  chapters: (ChapterSummary & {
+    recording: { id: string; name: string; shareId: string | null; published: boolean; steps: { id: string }[] } | null;
+  })[];
+}
+
 export interface EventPayload {
   type: "navigate" | "click" | "input" | "submit";
   url: string;
@@ -141,4 +200,36 @@ export const clicktaApi = {
   listRecordings: () => request<Recording[]>("/api/recordings"),
 
   listTools: () => request<ToolSummary[]>("/api/tools"),
+
+  createTool: (data: { name: string; url?: string }) =>
+    request<CreatedTool>("/api/tools", { method: "POST", body: JSON.stringify(data) }),
+
+  describeTool: (toolId: string) => request<ToolIntelligence>(`/api/tools/${toolId}/intelligence`),
+
+  planDemo: (data: { objective: string; toolId?: string; toolUrl?: string }) =>
+    request<DemoPlanResult>("/api/demo-plan", { method: "POST", body: JSON.stringify(data) }),
+
+  planModule: (data: { objective: string; toolId?: string; toolUrl?: string }) =>
+    request<ModulePlanResult>("/api/module-plan", { method: "POST", body: JSON.stringify(data) }),
+
+  createModule: (toolId: string, name: string) =>
+    request<CreatedModule>(`/api/tools/${toolId}/modules`, { method: "POST", body: JSON.stringify({ name }) }),
+
+  updateModule: (moduleId: string, data: { description?: string }) =>
+    request<CreatedModule>(`/api/modules/${moduleId}`, { method: "PATCH", body: JSON.stringify(data) }),
+
+  addChapter: (
+    moduleId: string,
+    data: { title: string; type: "demo" | "text"; description?: string; insertAfterOrder?: number }
+  ) => request<ChapterSummary>(`/api/modules/${moduleId}/chapters`, { method: "POST", body: JSON.stringify(data) }),
+
+  linkChapterRecording: (moduleId: string, chapterId: string, recordingId: string) =>
+    request<ChapterSummary>(`/api/modules/${moduleId}/chapters/${chapterId}/link`, {
+      method: "PATCH",
+      body: JSON.stringify({ recordingId }),
+    }),
+
+  listModules: (toolId: string) => request<ModuleSummary[]>(`/api/tools/${toolId}/modules`),
+
+  getModule: (moduleId: string) => request<ModuleDetail>(`/api/modules/${moduleId}/chapters`),
 };
