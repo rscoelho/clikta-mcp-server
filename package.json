@@ -16,12 +16,12 @@
   "homepage": "https://clikta.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rscoelho/clikta-mcp-server.git"
+    "url": "git+https://github.com/rscoelho/clikta-mcp-server.git"
   },
   "bugs": "https://github.com/rscoelho/clikta-mcp-server/issues",
   "type": "module",
   "bin": {
-    "clikta-mcp-server": "./dist/index.js"
+    "clikta-mcp-server": "dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
