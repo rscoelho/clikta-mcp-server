@@ -8,8 +8,19 @@ let browser: Browser | null = null;
 let page: Page | null = null;
 
 export async function getPage(): Promise<Page> {
+  // If Chromium died or its window was closed, `browser` would stay set and
+  // every later call would fail with "browser.newContext: Target page,
+  // context or browser has been closed" until the MCP process restarts.
+  if (browser && !browser.isConnected()) {
+    browser = null;
+    page = null;
+  }
   if (!browser) {
     browser = await chromium.launch({ headless: HEADLESS });
+    browser.on("disconnected", () => {
+      browser = null;
+      page = null;
+    });
   }
   if (!page || page.isClosed()) {
     // Matches the extension's CAPTURE_SCREENSHOT target viewport so demos
