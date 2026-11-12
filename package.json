@@ -1,8 +1,16 @@
 {
   "name": "@clikta/mcp-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server that lets Claude drive a real browser and turn what it does into a Clikta interactive demo, step guide, and narrated video — automatically.",
-  "keywords": ["mcp", "model-context-protocol", "claude", "browser-automation", "playwright", "documentation", "demo"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "browser-automation",
+    "playwright",
+    "documentation",
+    "demo"
+  ],
   "license": "MIT",
   "author": "Clikta, Lda.",
   "homepage": "https://clikta.com",
